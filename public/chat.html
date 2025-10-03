@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OHmegle - Chat</title>
+    <script src="/socket.io/socket.io.js"></script> 
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #f0f2f5; }
+        .chat-container { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); width: 90%; max-width: 600px; display: flex; flex-direction: column; height: 80vh; }
+        #messages { flex-grow: 1; border: 1px solid #eee; padding: 10px; margin-bottom: 10px; overflow-y: scroll; list-style-type: none; margin: 0; }
+        #messages li { padding: 5px 0; border-bottom: 1px dotted #eee; }
+        #messages .self { text-align: right; color: #007bff; }
+        #messages .partner { text-align: left; color: #ff5722; }
+        #input-form { display: flex; }
+        #input-form input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px 0 0 5px; }
+        #input-form button { padding: 10px 15px; background-color: #ff5722; color: white; border: none; border-radius: 0 5px 5px 0; cursor: pointer; }
+        .controls { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .controls button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
+        #skipBtn { background-color: #007bff; }
+        #stopBtn { background-color: #dc3545; }
+    </style>
+</head>
+<body>
+
+    <div class="chat-container">
+        <div class="controls">
+            <button id="skipBtn" onclick="disconnectChat()">Skip (Next Stranger)</button>
+            <button id="stopBtn" onclick="stopChat()">Stop (Exit)</button>
+        </div>
+        
+        <div id="status">Connecting...</div>
+        
+        <ul id="messages">
+        </ul>
+
+        <form id="input-form">
+            <input id="m" autocomplete="off" placeholder="Type a message..." disabled/>
+            <button type="submit" disabled>Send</button>
+        </form>
+    </div>
+
+    <script>
+        const socket = io();
+        
+        const form = document.getElementById('input-form');
+        const input = document.getElementById('m');
+        const messages = document.getElementById('messages');
+        const statusDiv = document.getElementById('status');
+        const sendBtn = form.querySelector('button');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const interests = localStorage.getItem('userInterests') || 'General';
+            statusDiv.textContent = `Looking for a match with interests: ${interests}...`;
+            
+            socket.emit('start_chat', interests);
+        });
+
+        socket.on('match_found', () => {
+            statusDiv.textContent = "You are connected with a stranger! Say hello!";
+            input.disabled = false;
+            sendBtn.disabled = false;
+            
+            messages.innerHTML = ''; 
+        });
+
+        socket.on('partner_disconnected', () => {
+            statusDiv.textContent = "Your partner disconnected. Searching for a new stranger...";
+            input.disabled = true; 
+            sendBtn.disabled = true;
+            appendMessage('System: Your partner disconnected. Looking for a new match.', 'system');
+            
+            messages.innerHTML = '';
+            socket.emit('start_chat', localStorage.getItem('userInterests') || 'General'); 
+        });
+
+        socket.on('chat_message', (msg) => {
+            appendMessage(`Stranger: ${msg}`, 'partner');
+        });
+
+        socket.on('chat_message_self', (msg) => {
+            appendMessage(`You: ${msg}`, 'self');
+        });
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (input.value && !input.disabled) {
+                socket.emit('chat_message', input.value);
+                input.value = '';
+            }
+        });
+
+        function disconnectChat() {
+            socket.emit('disconnect_chat'); 
+            statusDiv.textContent = "Chat ended. Looking for a new stranger...";
+            input.disabled = true; 
+            sendBtn.disabled = true;
+            messages.innerHTML = '';
+            socket.emit('start_chat', localStorage.getItem('userInterests') || 'General'); 
+        }
+
+        function stopChat() {
+            socket.emit('disconnect_chat'); 
+            window.location.href = 'index.html';
+        }
+        
+        function appendMessage(text, className) {
+            const item = document.createElement('li');
+            item.textContent = text;
+            item.classList.add(className);
+            messages.appendChild(item);
+            messages.scrollTop = messages.scrollHeight; 
+        }
+    </script>
+
+</body>
+</html>

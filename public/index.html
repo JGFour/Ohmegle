@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OHmegle - Chat with Strangers</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #f0f2f5; }
+        .container { background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); text-align: center; width: 90%; max-width: 400px; }
+        h1 { color: #ff5722; margin-bottom: 20px; font-size: 2.5em; }
+        .interest-box input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        .next-btn { background-color: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 1.1em; transition: background-color 0.3s; }
+        .next-btn:hover { background-color: #45a049; }
+        .modal { display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
+        .modal-content { background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; border-radius: 8px; width: 80%; max-width: 300px; text-align: center; }
+        .modal-content button { padding: 10px 15px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; }
+        #confirmBtn { background-color: #ff5722; color: white; }
+        #cancelBtn { background-color: #ccc; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>OHmegle</h1>
+        <p>Start chatting with strangers about shared interests.</p>
+        
+        <div class="interest-box">
+            <input type="text" id="interestInput" placeholder="Enter your interests (e.g., gaming, music)">
+        </div>
+        
+        <button class="next-btn" onclick="openModal()">Start a Chat!</button>
+    </div>
+
+    <div id="ageModal" class="modal">
+        <div class="modal-content">
+            <h2>Age Verification</h2>
+            <p>By clicking **Confirm**, you certify that you are **18 years of age or older** and agree to the Terms of Service.</p>
+            <button id="confirmBtn" onclick="proceedToChat()">Confirm</button>
+            <button id="cancelBtn" onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        function openModal() {
+            document.getElementById('ageModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('ageModal').style.display = 'none';
+        }
+
+        function proceedToChat() {
+            const interests = document.getElementById('interestInput').value;
+            
+            localStorage.setItem('userInterests', interests);
+            
+            window.location.href = 'chat.html'; 
+        }
+    </script>
+
+</body>
+</html>
