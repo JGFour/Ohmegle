@@ -13,6 +13,14 @@
         #messages .self { text-align: right; color: #007bff; }
         #messages .partner { text-align: left; color: #ff5722; }
         #messages .system { text-align: center; font-style: italic; color: #6c757d; }
+        #typing-status {
+            font-style: italic; 
+            color: #777; 
+            margin-top: -5px; 
+            margin-bottom: 5px; 
+            height: 18px;
+            padding-left: 10px;
+        }
         #input-form { display: flex; }
         #input-form input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px 0 0 5px; }
         #input-form button { padding: 10px 15px; background-color: #ff5722; color: white; border: none; border-radius: 0 5px 5px 0; cursor: pointer; }
@@ -34,6 +42,8 @@
         
         <ul id="messages">
         </ul>
+        
+        <div id="typing-status"></div>
 
         <form id="input-form">
             <input id="m" autocomplete="off" placeholder="Type a message..." disabled/>
@@ -49,6 +59,8 @@
         const messages = document.getElementById('messages');
         const statusDiv = document.getElementById('status');
         const sendBtn = form.querySelector('button');
+        const typingStatusDiv = document.getElementById('typing-status');
+        let typingTimeout;
 
         document.addEventListener('DOMContentLoaded', () => {
             const interests = localStorage.getItem('userInterests') || 'General';
@@ -57,12 +69,25 @@
             socket.emit('start_chat', interests);
         });
 
+        input.addEventListener('input', () => {
+            if (!input.disabled) {
+                socket.emit('typing');
+                
+                clearTimeout(typingTimeout);
+                
+                typingTimeout = setTimeout(() => {
+                    socket.emit('stop_typing');
+                }, 1000);
+            }
+        });
+
         socket.on('match_found', () => {
             statusDiv.textContent = "You are connected with a stranger! Say hello!";
             input.disabled = false;
             sendBtn.disabled = false;
             
             messages.innerHTML = ''; 
+            typingStatusDiv.textContent = "";
         });
 
         socket.on('partner_disconnected', () => {
@@ -71,11 +96,13 @@
             sendBtn.disabled = true;
             appendMessage('System: Your partner disconnected. Looking for a new match.', 'system');
             
+            typingStatusDiv.textContent = "";
 
             socket.emit('start_chat', localStorage.getItem('userInterests') || 'General'); 
         });
 
         socket.on('chat_message', (msg) => {
+            typingStatusDiv.textContent = ""; 
             appendMessage(`Stranger: ${msg}`, 'partner');
         });
 
@@ -83,9 +110,21 @@
             appendMessage(`You: ${msg}`, 'self');
         });
 
+        socket.on('partner_typing', () => {
+            typingStatusDiv.textContent = "Stranger is typing...";
+            messages.scrollTop = messages.scrollHeight; 
+        });
+
+        socket.on('partner_stop_typing', () => {
+            typingStatusDiv.textContent = "";
+        });
+
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             if (input.value && !input.disabled) {
+                clearTimeout(typingTimeout);
+                socket.emit('stop_typing');
+
                 socket.emit('chat_message', input.value);
                 input.value = '';
             }
@@ -98,8 +137,8 @@
             sendBtn.disabled = true;
             appendMessage('System: Chat ended by user. Looking for a new match.', 'system');
 
-
             messages.innerHTML = '';
+            typingStatusDiv.textContent = "";
 
             socket.emit('start_chat', localStorage.getItem('userInterests') || 'General'); 
         }
