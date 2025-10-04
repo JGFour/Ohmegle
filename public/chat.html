@@ -186,6 +186,7 @@
             appendMessage(`You: ${msg}`, 'self');
         });
         socket.on('partner_typing', () => {
+            messagesArea.style.display = 'flex';
             typingStatusDiv.textContent = "Stranger is typing...";
             messages.scrollTop = messages.scrollHeight; 
         });
@@ -194,8 +195,8 @@
         });
 
         socket.on('call_made', async (offer) => {
-            if (!peerConnection) {
-                 await startVideo(true, offer);
+            if (!localStream) {
+                 await startVideo(false, offer);
                  return;
             }
             await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
@@ -205,7 +206,9 @@
         });
 
         socket.on('answer_received', (answer) => {
-            peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            if (peerConnection) {
+                peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            }
         });
 
         socket.on('ice_candidate_received', (candidate) => {
@@ -225,50 +228,62 @@
             }
         });
 
-        async function startVideo(isInitialCall = false, offer = null) {
-            if (localStream) return; 
-
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                localVideo.srcObject = localStream;
-
-                videoStreamsDiv.style.display = 'flex';
-                messagesArea.style.display = 'none';
-                videoSwitchBtn.style.display = 'none';
-                statusDiv.textContent = "Video connected locally. Waiting for partner...";
-                
-                isVideoChat = true;
-
-                peerConnection = new RTCPeerConnection({ iceServers: stunServers });
+        async function initializePeerConnection() {
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            peerConnection = new RTCPeerConnection({ iceServers: stunServers });
+            
+            if (localStream) {
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            }
 
-                peerConnection.ontrack = (event) => {
-                    remoteVideo.srcObject = event.streams[0];
-                    statusDiv.textContent = "Video chat established!";
-                };
+            peerConnection.ontrack = (event) => {
+                remoteVideo.srcObject = event.streams[0];
+                statusDiv.textContent = "Video chat established!";
+            };
 
-                peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        socket.emit('ice_candidate', event.candidate);
-                    }
-                };
-
-                if (offer) {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                    const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
-                    socket.emit('answer_call', peerConnection.localDescription);
-                } else if (isInitialCall || !isVideoChat) {
-                    const newOffer = await peerConnection.createOffer();
-                    await peerConnection.setLocalDescription(newOffer);
-                    socket.emit('call_user', peerConnection.localDescription);
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice_candidate', event.candidate);
                 }
+            };
+        }
 
-            } catch (error) {
-                console.error("Error accessing media devices or starting video:", error);
-                statusDiv.textContent = "Error: Camera/Mic access denied or failed. Reverting to text chat.";
-                cleanupVideo();
-                isVideoChat = false;
+        async function startVideo(isCaller = false, offer = null) {
+            if (!localStream) {
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    localVideo.srcObject = localStream;
+                } catch (error) {
+                    console.error("Error accessing media devices:", error);
+                    statusDiv.textContent = "Error: Camera/Mic access denied or failed. Reverting to text chat.";
+                    cleanupVideo();
+                    isVideoChat = false;
+                    return;
+                }
+            }
+            
+            initializePeerConnection();
+
+            videoStreamsDiv.style.display = 'flex';
+            messagesArea.style.display = 'none';
+            videoSwitchBtn.style.display = 'none';
+            statusDiv.textContent = "Video connected locally. Waiting for partner...";
+            
+            isVideoChat = true;
+
+            if (isCaller) {
+                const newOffer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(newOffer);
+                socket.emit('call_user', peerConnection.localDescription);
+            } else if (offer) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                socket.emit('answer_call', peerConnection.localDescription);
             }
         }
 

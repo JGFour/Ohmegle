@@ -107,7 +107,6 @@ function matchUsers() {
 
             if (user1Id === user2Id) continue;
             
-            // Tiyakin na pareho ang chat type: Text sa Text O Video sa Video
             if (user1.isVideo !== user2.isVideo) continue;
 
             const user1Interests = user1.interests.split(',');
