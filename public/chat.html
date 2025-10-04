@@ -71,7 +71,7 @@
             sendBtn.disabled = true;
             appendMessage('System: Your partner disconnected. Looking for a new match.', 'system');
             
-            // Hindi na inalis ang messages.innerHTML = '';
+
             socket.emit('start_chat', localStorage.getItem('userInterests') || 'General'); 
         });
 
@@ -98,7 +98,7 @@
             sendBtn.disabled = true;
             appendMessage('System: Chat ended by user. Looking for a new match.', 'system');
 
-            // Nililinis ang history para sa bagong pag-uusap
+
             messages.innerHTML = '';
 
             socket.emit('start_chat', localStorage.getItem('userInterests') || 'General'); 
