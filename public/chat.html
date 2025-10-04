@@ -21,6 +21,27 @@
             height: 18px;
             padding-left: 10px;
         }
+        #video-streams {
+            height: 50%; 
+            width: 100%; 
+            margin-bottom: 10px; 
+            background-color: black; 
+            position: relative;
+        }
+        #local-video {
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover;
+        }
+        #remote-video {
+            position: absolute; 
+            top: 10px; 
+            left: 10px; 
+            width: 100px; 
+            height: 75px; 
+            object-fit: cover; 
+            border: 2px solid white;
+        }
         #input-form { display: flex; }
         #input-form input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px 0 0 5px; }
         #input-form button { padding: 10px 15px; background-color: #ff5722; color: white; border: none; border-radius: 0 5px 5px 0; cursor: pointer; }
@@ -28,17 +49,24 @@
         .controls button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
         #skipBtn { background-color: #007bff; }
         #stopBtn { background-color: #dc3545; }
+        #videoSwitchBtn { background-color: #4CAF50; }
     </style>
 </head>
 <body>
 
     <div class="chat-container">
         <div class="controls">
-            <button id="skipBtn" onclick="disconnectChat()">Skip (Next Stranger)</button>
-            <button id="stopBtn" onclick="stopChat()">Stop (Exit)</button>
+            <button id="skipBtn" onclick="disconnectChat()">Skip</button>
+            <button id="videoSwitchBtn" style="display: none;" onclick="startVideo(false)">Switch to Video</button>
+            <button id="stopBtn" onclick="stopChat()">Stop</button>
         </div>
         
         <div id="status">Connecting...</div>
+        
+        <div id="video-streams" style="display: none;">
+            <video id="local-video" autoplay muted playsinline></video>
+            <video id="remote-video" autoplay playsinline></video>
+        </div>
         
         <ul id="messages">
         </ul>
@@ -60,21 +88,37 @@
         const statusDiv = document.getElementById('status');
         const sendBtn = form.querySelector('button');
         const typingStatusDiv = document.getElementById('typing-status');
-        let typingTimeout;
+        const videoStreamsDiv = document.getElementById('video-streams');
+        const videoSwitchBtn = document.getElementById('videoSwitchBtn');
+        const localVideo = document.getElementById('local-video');
+        const remoteVideo = document.getElementById('remote-video');
 
+        let typingTimeout;
+        let localStream;
+        let peerConnection;
+        let isVideoChat = localStorage.getItem('chatType') === 'video';
+        
+        const stunServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+        
         document.addEventListener('DOMContentLoaded', () => {
             const interests = localStorage.getItem('userInterests') || 'General';
             statusDiv.textContent = `Looking for a match with interests: ${interests}...`;
             
-            socket.emit('start_chat', interests);
+            if (isVideoChat) {
+                videoStreamsDiv.style.display = 'block';
+                messages.style.display = 'none'; 
+                videoSwitchBtn.style.display = 'none'; 
+            } else {
+                videoSwitchBtn.style.display = 'inline-block';
+            }
+
+            socket.emit('start_chat', interests, isVideoChat);
         });
 
         input.addEventListener('input', () => {
             if (!input.disabled) {
                 socket.emit('typing');
-                
                 clearTimeout(typingTimeout);
-                
                 typingTimeout = setTimeout(() => {
                     socket.emit('stop_typing');
                 }, 1000);
@@ -82,12 +126,16 @@
         });
 
         socket.on('match_found', () => {
-            statusDiv.textContent = "You are connected with a stranger! Say hello!";
+            statusDiv.textContent = isVideoChat ? "Partner found! Attempting video connection..." : "You are connected with a stranger! Say hello!";
             input.disabled = false;
             sendBtn.disabled = false;
             
             messages.innerHTML = ''; 
             typingStatusDiv.textContent = "";
+
+            if (isVideoChat) {
+                startVideo(true);
+            }
         });
 
         socket.on('partner_disconnected', () => {
@@ -97,26 +145,41 @@
             appendMessage('System: Your partner disconnected. Looking for a new match.', 'system');
             
             typingStatusDiv.textContent = "";
-
-            socket.emit('start_chat', localStorage.getItem('userInterests') || 'General'); 
+            cleanupVideo();
+            
+            socket.emit('start_chat', localStorage.getItem('userInterests') || 'General', isVideoChat); 
         });
 
         socket.on('chat_message', (msg) => {
             typingStatusDiv.textContent = ""; 
             appendMessage(`Stranger: ${msg}`, 'partner');
         });
-
         socket.on('chat_message_self', (msg) => {
             appendMessage(`You: ${msg}`, 'self');
         });
-
         socket.on('partner_typing', () => {
             typingStatusDiv.textContent = "Stranger is typing...";
             messages.scrollTop = messages.scrollHeight; 
         });
-
         socket.on('partner_stop_typing', () => {
             typingStatusDiv.textContent = "";
+        });
+
+        socket.on('call_made', async (offer) => {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer_call', peerConnection.localDescription);
+        });
+
+        socket.on('answer_received', (answer) => {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        });
+
+        socket.on('ice_candidate_received', (candidate) => {
+            if (peerConnection) {
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            }
         });
 
         form.addEventListener('submit', (e) => {
@@ -130,6 +193,61 @@
             }
         });
 
+        async function startVideo(isInitialCall = false) {
+            if (localStream) return; 
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+
+                videoStreamsDiv.style.display = 'block';
+                messages.style.display = 'none';
+                videoSwitchBtn.style.display = 'none';
+                statusDiv.textContent = "Video connected locally. Waiting for partner...";
+
+                peerConnection = new RTCPeerConnection({ iceServers: stunServers });
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+                peerConnection.ontrack = (event) => {
+                    remoteVideo.srcObject = event.streams[0];
+                    statusDiv.textContent = "Video chat established!";
+                };
+
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        socket.emit('ice_candidate', event.candidate);
+                    }
+                };
+
+                if (isInitialCall || !isVideoChat) {
+                    const offer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(offer);
+                    socket.emit('call_user', peerConnection.localDescription);
+                }
+
+            } catch (error) {
+                console.error("Error accessing media devices or starting video:", error);
+                statusDiv.textContent = "Error: Camera/Mic access denied or failed. Reverting to text chat.";
+                cleanupVideo();
+            }
+        }
+
+        function cleanupVideo() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            localVideo.srcObject = null;
+            remoteVideo.srcObject = null;
+            videoStreamsDiv.style.display = 'none';
+            messages.style.display = 'block'; 
+            videoSwitchBtn.style.display = 'inline-block';
+        }
+
         function disconnectChat() {
             socket.emit('disconnect_chat'); 
             statusDiv.textContent = "Chat ended. Looking for a new stranger...";
@@ -139,12 +257,14 @@
 
             messages.innerHTML = '';
             typingStatusDiv.textContent = "";
+            cleanupVideo();
 
-            socket.emit('start_chat', localStorage.getItem('userInterests') || 'General'); 
+            socket.emit('start_chat', localStorage.getItem('userInterests') || 'General', isVideoChat); 
         }
 
         function stopChat() {
             socket.emit('disconnect_chat'); 
+            cleanupVideo();
             window.location.href = 'index.html';
         }
         

@@ -15,15 +15,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    socket.on('start_chat', (interestsString) => {
+    socket.on('start_chat', (interestsString, isVideo) => {
         const interests = normalizeInterests(interestsString);
-        console.log(`${socket.id} is looking for a chat with interests: ${interests}`);
+        console.log(`${socket.id} is looking for a chat with interests: ${interests}. Video: ${isVideo}`);
         
         delete waitingUsers[socket.id]; 
 
         waitingUsers[socket.id] = {
             interests: interests,
-            socket: socket
+            socket: socket,
+            isVideo: isVideo
         };
 
         matchUsers();
@@ -34,6 +35,41 @@ io.on('connection', (socket) => {
         if (partnerId) {
             io.to(partnerId).emit('chat_message', msg);
             socket.emit('chat_message_self', msg); 
+        }
+    });
+
+    socket.on('typing', () => {
+        const partnerId = activePairs[socket.id];
+        if (partnerId) {
+            io.to(partnerId).emit('partner_typing');
+        }
+    });
+
+    socket.on('stop_typing', () => {
+        const partnerId = activePairs[socket.id];
+        if (partnerId) {
+            io.to(partnerId).emit('partner_stop_typing');
+        }
+    });
+
+    socket.on('call_user', (offer) => {
+        const partnerId = activePairs[socket.id];
+        if (partnerId) {
+            io.to(partnerId).emit('call_made', offer);
+        }
+    });
+
+    socket.on('answer_call', (answer) => {
+        const partnerId = activePairs[socket.id];
+        if (partnerId) {
+            io.to(partnerId).emit('answer_received', answer);
+        }
+    });
+
+    socket.on('ice_candidate', (candidate) => {
+        const partnerId = activePairs[socket.id];
+        if (partnerId) {
+            io.to(partnerId).emit('ice_candidate_received', candidate);
         }
     });
 
@@ -70,6 +106,9 @@ function matchUsers() {
             const user2 = waitingUsers[user2Id];
 
             if (user1Id === user2Id) continue;
+            
+            // Tiyakin na pareho ang chat type: Text sa Text O Video sa Video
+            if (user1.isVideo !== user2.isVideo) continue;
 
             const user1Interests = user1.interests.split(',');
             const user2Interests = user2.interests.split(',');
