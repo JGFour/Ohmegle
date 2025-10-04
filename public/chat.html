@@ -12,6 +12,7 @@
         #messages li { padding: 5px 0; border-bottom: 1px dotted #eee; }
         #messages .self { text-align: right; color: #007bff; }
         #messages .partner { text-align: left; color: #ff5722; }
+        #messages .system { text-align: center; font-style: italic; color: #6c757d; }
         #input-form { display: flex; }
         #input-form input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px 0 0 5px; }
         #input-form button { padding: 10px 15px; background-color: #ff5722; color: white; border: none; border-radius: 0 5px 5px 0; cursor: pointer; }
@@ -70,7 +71,7 @@
             sendBtn.disabled = true;
             appendMessage('System: Your partner disconnected. Looking for a new match.', 'system');
             
-            messages.innerHTML = '';
+            // Hindi na inalis ang messages.innerHTML = '';
             socket.emit('start_chat', localStorage.getItem('userInterests') || 'General'); 
         });
 
@@ -95,7 +96,11 @@
             statusDiv.textContent = "Chat ended. Looking for a new stranger...";
             input.disabled = true; 
             sendBtn.disabled = true;
+            appendMessage('System: Chat ended by user. Looking for a new match.', 'system');
+
+            // Nililinis ang history para sa bagong pag-uusap
             messages.innerHTML = '';
+
             socket.emit('start_chat', localStorage.getItem('userInterests') || 'General'); 
         }
 
