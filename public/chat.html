@@ -7,44 +7,68 @@
     <script src="/socket.io/socket.io.js"></script> 
     <style>
         body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #f0f2f5; }
-        .chat-container { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); width: 90%; max-width: 600px; display: flex; flex-direction: column; height: 80vh; }
-        #messages { flex-grow: 1; border: 1px solid #eee; padding: 10px; margin-bottom: 10px; overflow-y: scroll; list-style-type: none; margin: 0; }
+        .chat-container { 
+            background-color: white; 
+            padding: 20px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); 
+            width: 90%; 
+            max-width: 800px;
+            display: flex; 
+            flex-direction: column; 
+            height: 90vh;
+        }
+        
+        #video-streams {
+            flex-grow: 1;
+            width: 100%; 
+            margin-bottom: 10px; 
+            background-color: black; 
+            display: flex;
+            overflow: hidden;
+        }
+        
+        #local-video, #remote-video {
+            width: 50%;
+            height: 100%; 
+            object-fit: cover;
+            border: 1px solid #333;
+        }
+        
+        #messages-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #eee; 
+            margin-bottom: 10px;
+        }
+        
+        #messages { 
+            flex-grow: 1; 
+            padding: 10px; 
+            overflow-y: scroll; 
+            list-style-type: none; 
+            margin: 0; 
+        }
+        
         #messages li { padding: 5px 0; border-bottom: 1px dotted #eee; }
         #messages .self { text-align: right; color: #007bff; }
         #messages .partner { text-align: left; color: #ff5722; }
         #messages .system { text-align: center; font-style: italic; color: #6c757d; }
+        
+        #status { text-align: center; margin-bottom: 5px; }
         #typing-status {
             font-style: italic; 
             color: #777; 
-            margin-top: -5px; 
-            margin-bottom: 5px; 
-            height: 18px;
-            padding-left: 10px;
+            height: 18px; 
+            padding: 0 10px 5px 10px;
         }
-        #video-streams {
-            height: 50%; 
-            width: 100%; 
-            margin-bottom: 10px; 
-            background-color: black; 
-            position: relative;
-        }
-        #local-video {
-            width: 100%; 
-            height: 100%; 
-            object-fit: cover;
-        }
-        #remote-video {
-            position: absolute; 
-            top: 10px; 
-            left: 10px; 
-            width: 100px; 
-            height: 75px; 
-            object-fit: cover; 
-            border: 2px solid white;
-        }
+
         #input-form { display: flex; }
         #input-form input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px 0 0 5px; }
         #input-form button { padding: 10px 15px; background-color: #ff5722; color: white; border: none; border-radius: 0 5px 5px 0; cursor: pointer; }
+        
         .controls { display: flex; justify-content: space-between; margin-bottom: 10px; }
         .controls button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
         #skipBtn { background-color: #007bff; }
@@ -68,11 +92,12 @@
             <video id="remote-video" autoplay playsinline></video>
         </div>
         
-        <ul id="messages">
-        </ul>
+        <div id="messages-area">
+            <ul id="messages">
+            </ul>
+            <div id="typing-status"></div>
+        </div>
         
-        <div id="typing-status"></div>
-
         <form id="input-form">
             <input id="m" autocomplete="off" placeholder="Type a message..." disabled/>
             <button type="submit" disabled>Send</button>
@@ -84,6 +109,7 @@
         
         const form = document.getElementById('input-form');
         const input = document.getElementById('m');
+        const messagesArea = document.getElementById('messages-area');
         const messages = document.getElementById('messages');
         const statusDiv = document.getElementById('status');
         const sendBtn = form.querySelector('button');
@@ -105,10 +131,12 @@
             statusDiv.textContent = `Looking for a match with interests: ${interests}...`;
             
             if (isVideoChat) {
-                videoStreamsDiv.style.display = 'block';
-                messages.style.display = 'none'; 
+                videoStreamsDiv.style.display = 'flex';
+                messagesArea.style.display = 'none';
                 videoSwitchBtn.style.display = 'none'; 
             } else {
+                videoStreamsDiv.style.display = 'none';
+                messagesArea.style.display = 'flex';
                 videoSwitchBtn.style.display = 'inline-block';
             }
 
@@ -166,6 +194,10 @@
         });
 
         socket.on('call_made', async (offer) => {
+            if (!peerConnection) {
+                 await startVideo(true, offer);
+                 return;
+            }
             await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
@@ -193,17 +225,19 @@
             }
         });
 
-        async function startVideo(isInitialCall = false) {
+        async function startVideo(isInitialCall = false, offer = null) {
             if (localStream) return; 
 
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 localVideo.srcObject = localStream;
 
-                videoStreamsDiv.style.display = 'block';
-                messages.style.display = 'none';
+                videoStreamsDiv.style.display = 'flex';
+                messagesArea.style.display = 'none';
                 videoSwitchBtn.style.display = 'none';
                 statusDiv.textContent = "Video connected locally. Waiting for partner...";
+                
+                isVideoChat = true;
 
                 peerConnection = new RTCPeerConnection({ iceServers: stunServers });
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
@@ -219,9 +253,14 @@
                     }
                 };
 
-                if (isInitialCall || !isVideoChat) {
-                    const offer = await peerConnection.createOffer();
-                    await peerConnection.setLocalDescription(offer);
+                if (offer) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    socket.emit('answer_call', peerConnection.localDescription);
+                } else if (isInitialCall || !isVideoChat) {
+                    const newOffer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(newOffer);
                     socket.emit('call_user', peerConnection.localDescription);
                 }
 
@@ -229,6 +268,7 @@
                 console.error("Error accessing media devices or starting video:", error);
                 statusDiv.textContent = "Error: Camera/Mic access denied or failed. Reverting to text chat.";
                 cleanupVideo();
+                isVideoChat = false;
             }
         }
 
@@ -244,7 +284,7 @@
             localVideo.srcObject = null;
             remoteVideo.srcObject = null;
             videoStreamsDiv.style.display = 'none';
-            messages.style.display = 'block'; 
+            messagesArea.style.display = 'flex'; 
             videoSwitchBtn.style.display = 'inline-block';
         }
 
